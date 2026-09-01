@@ -4,5 +4,11 @@
     "api/autopsy.js": {
       "maxDuration": 300
     }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/api/autopsy",
+      "destination": "/api/autopsy.js"
+    }
+  ]
 }
