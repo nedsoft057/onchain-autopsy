@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>On-Chain Autopsy · Tracing</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#f4f0e5;color:#171713;font-family:Arial,Helvetica,sans-serif}body{min-height:100vh;overflow-x:hidden}.top{height:68px;border-bottom:1px solid rgba(23,23,19,.14);display:flex;align-items:center;justify-content:space-between;padding:0 28px}.brand{display:flex;gap:9px;align-items:center;font-size:11px;font-weight:800}.mark{width:17px;height:17px;border:1px solid #171713;border-radius:5px;background:#f2bd22;position:relative}.mark:after{content:"";position:absolute;width:5px;height:5px;border:1px solid #171713;border-radius:50%;left:5px;top:5px}.status{font:9px monospace;color:#747268;letter-spacing:.08em;text-transform:uppercase}.main{min-height:calc(100vh - 68px);display:grid;place-items:center;padding:40px 18px}.card{width:min(720px,100%);background:#171713;color:#f4f0e5;border-radius:18px;padding:30px;box-shadow:0 28px 80px rgba(23,23,19,.18)}.kicker{font:9px monospace;letter-spacing:.16em;text-transform:uppercase;color:#9c9a90}
+.kicker-row{display:flex;align-items:center;gap:9px;}
+.agent-dots{display:flex;align-items:center;gap:5px;height:10px;}
+.agent-dots span{display:block;width:7px;height:7px;border-radius:50%;background:#77736a;border:1px solid rgba(244,240,229,.28);}
+.agent-dots span:nth-child(1){background:#d45a45;}
+.agent-dots span:nth-child(2){background:#f2bd22;}
+.agent-dots span:nth-child(3){background:#4f8b6f;}
+.title{font-size:clamp(36px,7vw,68px);line-height:.9;letter-spacing:-3px;margin:12px 0 10px;font-weight:900}.title span{color:#f2bd22}.sub{color:#a6a49b;font-size:12px;line-height:1.55;max-width:590px}.progress{height:7px;background:#2b2b26;border-radius:99px;overflow:hidden;margin:26px 0 12px}.bar{height:100%;width:3%;background:#f2bd22;border-radius:99px;transition:width .4s ease}.pct{font:10px monospace;color:#d0cec3}.question{margin:26px 0 16px;border:1px solid rgba(255,255,255,.12);background:#20201b;border-radius:12px;padding:15px}.question .label{font:8px monospace;color:#f2bd22;letter-spacing:.14em;text-transform:uppercase;margin-bottom:7px}.question .text{font-size:14px;line-height:1.45}.feed{height:270px;overflow:auto;border-top:1px solid rgba(255,255,255,.1);padding-top:12px;font:10px/1.55 monospace;color:#aaa89e}.row{padding:5px 0;display:flex;gap:10px}.time{color:#65645d;flex:0 0 58px}.msg{color:#b9b7ad}.msg.ok{color:#d9d7ce}.msg.accent{color:#f2bd22}.footer{display:flex;justify-content:space-between;gap:15px;margin-top:18px;font:8px monospace;color:#66655d;text-transform:uppercase;letter-spacing:.08em}.error{display:none;margin-top:18px;border:1px solid rgba(218,88,65,.45);background:rgba(218,88,65,.1);padding:12px;border-radius:10px;color:#f1b8aa;font-size:11px}.done{display:none;color:#f2bd22;font:10px monospace;margin-top:12px}@media(max-width:560px){.top{padding:0 16px;height:58px}.main{padding:18px 12px}.card{padding:22px;border-radius:14px}.feed{height:230px}.title{letter-spacing:-2px}}
+</style>
+</head>
+<body>
+<header class="top"><div class="brand"><span class="mark"></span>ON-CHAIN AUTOPSY</div><div class="status">Autopsy Engine · Online</div></header>
+<main class="main"><section class="card" aria-live="polite">
+<div class="kicker-row"><div class="agent-dots" aria-hidden="true"><span></span><span></span><span></span></div><div class="kicker">Case reconstruction · live</div></div>
+<h1 class="title">Following the<br><span>evidence.</span></h1>
+<p class="sub" id="sub">The engine is establishing the token, tracing its liquidity, mapping holders and testing the exit pattern. This is the investigation log, not a black-box loading screen.</p>
+<div class="progress"><div class="bar" id="bar"></div></div><div class="pct" id="pct">03% · INITIALIZING</div>
+<div class="question"><div class="label">Current investigation question</div><div class="text" id="question">What token, deployer, and basic identity details are we investigating?</div></div>
+<div class="feed" id="feed"></div>
+<div class="done" id="done">100% · EVIDENCE SCENE READY</div>
+<div class="footer"><span id="case">CASE · —</span><span>FACTS COME FROM PROVIDERS</span></div>
+<div class="error" id="error"></div>
+</section></main>
+<script>
+const qs=new URLSearchParams(location.search);const id=qs.get('id');const bar=document.getElementById('bar'),pct=document.getElementById('pct'),feed=document.getElementById('feed'),question=document.getElementById('question'),done=document.getElementById('done'),errorBox=document.getElementById('error'),caseEl=document.getElementById('case');let step=0,closed=false;
+function add(msg,kind=''){const row=document.createElement('div');row.className='row';const time=document.createElement('span');time.className='time';time.textContent=new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});const text=document.createElement('span');text.className='msg '+kind;text.textContent=msg;row.append(time,text);feed.append(row);feed.scrollTop=feed.scrollHeight}
+function progressFrom(msg){if(/INVESTIGATION STARTED/.test(msg))return 5;if(/querying/.test(msg))return Math.min(90,8+step*7);if(/decision received/.test(msg))return Math.min(92,12+step*8);if(/PROVIDER → executing/.test(msg))return Math.min(95,16+step*10);if(/OBSERVATION/.test(msg))return Math.min(96,20+step*11);if(/PLAN → enough/.test(msg))return 97;if(/VERDICT →/.test(msg))return 99;return null}
+function apply(msg){if(!msg)return;const p=progressFrom(msg);if(/ACTION →/.test(msg))step++;if(/QUESTION →/.test(msg)){question.textContent=msg.replace(/^QUESTION →\s*/, '');}if(p!=null){bar.style.width=p+'%';pct.textContent=String(p).padStart(2,'0')+'% · '+(p<25?'ESTABLISHING':p<70?'TRACING':p<96?'CORROBORATING':'FINALIZING')}if(/^AI PLANNER/.test(msg))add(msg,'accent');else if(/^VERDICT/.test(msg))add(msg,'ok');else if(/^REASONING/.test(msg))return;else add(msg)}
+if(!id){errorBox.style.display='block';errorBox.textContent='No autopsy case was supplied.';}else{caseEl.textContent='CASE · '+id.slice(0,8).toUpperCase();const es=new EventSource('/api/autopsy/'+encodeURIComponent(id)+'/events');es.onmessage=e=>{const data=JSON.parse(e.data);if(data.type==='event'){apply(data.message)}else if(data.type==='complete'){closed=true;bar.style.width='100%';pct.textContent='100% · COMPLETE';done.style.display='block';add('EVIDENCE SCENE → loading verified markers','accent');es.close();setTimeout(()=>location.href='/verdict?id='+encodeURIComponent(id),700)}else if(data.type==='error'){closed=true;errorBox.style.display='block';errorBox.textContent=data.message;es.close()}};es.onerror=()=>{if(!closed){add('CONNECTION → waiting for investigation stream…');}};fetch('/api/autopsy/'+encodeURIComponent(id)).then(r=>r.json()).then(data=>{if(data.ca)caseEl.textContent='CASE · '+data.ca.slice(0,14)+'…';if(data.status==='complete'){location.href='/verdict?id='+encodeURIComponent(id)}else if(data.status==='error'){errorBox.style.display='block';errorBox.textContent=data.error||'Autopsy failed.'}}).catch(()=>{});}
+</script>
+</body></html>
