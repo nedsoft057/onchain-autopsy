@@ -19,6 +19,8 @@ const DEX_TO_GOLDRUSH_CHAIN={
 async function detectEvmChain(ca){
   if(!EVM_ADDRESS.test(String(ca||"").trim())) return null;
   const address=String(ca).trim().toLowerCase();
+
+  // Fast path: DexScreener already knows the chain for tokens with a market/pair.
   try{
     const response=await fetch(`https://api.dexscreener.com/latest/dex/search/?q=${encodeURIComponent(ca)}`,{headers:{Accept:"application/json"}});
     if(response.ok){
@@ -32,15 +34,31 @@ async function detectEvmChain(ca){
       if(matches.length){matches.sort((a,b)=>b.liquidity-a.liquidity);return matches[0].chain;}
     }
   }catch{}
+
+  // Bounded fallback. The old implementation probed every chain one-by-one,
+  // allowing up to ~200s before the actual investigation even started.
+  // Probe a small batch in parallel with a short timeout instead.
   const apiKey=process.env.GOLDRUSH_API_KEY;
   if(!apiKey) return null;
   const chains=["eth-mainnet","base-mainnet","bsc-mainnet","matic-mainnet","arbitrum-mainnet","optimism-mainnet","avalanche-mainnet","gnosis-mainnet","robinhood-mainnet","linea-mainnet","scroll-mainnet","zksync-mainnet","mantle-mainnet","unichain-mainnet","berachain-mainnet","ink-mainnet","monad-mainnet","hyperevm-mainnet","world-mainnet","apechain-mainnet","blast-mainnet","celo-mainnet","fantom-mainnet","moonbeam-mainnet","sonic-mainnet","sei-mainnet","taiko-mainnet"];
-  for(const chain of chains){
-    const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),8000);
-    try{
-      const response=await fetch(`https://api.covalenthq.com/v1/${chain}/tokens/${encodeURIComponent(ca)}/token_holders_v2/?page-number=0&page-size=1`,{headers:{Accept:"application/json",Authorization:`Bearer ${apiKey}`},signal:controller.signal});
-      if(response.ok){const body=await response.json().catch(()=>null);const data=body?.data||body;const items=Array.isArray(data?.items)?data.items:[];if(items.length||data?.pagination)return chain;}
-    }catch{} finally{clearTimeout(timer);}
+  const timeoutMs=2500;
+  const batchSize=5;
+  for(let i=0;i<chains.length;i+=batchSize){
+    const batch=chains.slice(i,i+batchSize);
+    const found=await Promise.all(batch.map(async chain=>{
+      const controller=new AbortController();
+      const timer=setTimeout(()=>controller.abort(),timeoutMs);
+      try{
+        const response=await fetch(`https://api.covalenthq.com/v1/${chain}/tokens/${encodeURIComponent(ca)}/token_holders_v2/?page-number=0&page-size=1`,{headers:{Accept:"application/json",Authorization:`Bearer ${apiKey}`},signal:controller.signal});
+        if(!response.ok) return null;
+        const body=await response.json().catch(()=>null);
+        const data=body?.data||body;
+        const items=Array.isArray(data?.items)?data.items:[];
+        return (items.length||data?.pagination)?chain:null;
+      }catch{return null;} finally{clearTimeout(timer);}
+    }));
+    const match=found.find(Boolean);
+    if(match) return match;
   }
   return null;
 }
@@ -77,6 +95,7 @@ export default async function handler(req,res){
   res.setHeader("X-Accel-Buffering","no");
   res.flushHeaders?.();
   send(res,{type:"event",message:"INVESTIGATION STARTED"});
+  const heartbeat=setInterval(()=>{try{res.write(": keep-alive\n\n");}catch{}},10000);
   try{
     const body=typeof req.body==="object"&&req.body!==null?req.body:await new Promise((resolve,reject)=>{let raw="";req.on("data",c=>{raw+=c;if(raw.length>10000)reject(new Error("Request too large."));});req.on("end",()=>{try{resolve(JSON.parse(raw||"{}"));}catch(e){reject(e);}});req.on("error",reject);});
     const ca=String(body?.ca||body?.token||body?.address||"").trim();
@@ -87,5 +106,6 @@ export default async function handler(req,res){
     const result=await agent.run();
     send(res,{type:"complete",result});
   }catch(error){send(res,{type:"error",message:String(error?.message||error)});}
+  clearInterval(heartbeat);
   res.end();
 }
