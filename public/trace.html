@@ -29,10 +29,43 @@
 <div class="error" id="error"></div>
 </section></main>
 <script>
-const qs=new URLSearchParams(location.search);const id=qs.get('id');const bar=document.getElementById('bar'),pct=document.getElementById('pct'),feed=document.getElementById('feed'),question=document.getElementById('question'),done=document.getElementById('done'),errorBox=document.getElementById('error'),caseEl=document.getElementById('case');let step=0,closed=false;
+const qs=new URLSearchParams(location.search);const id=qs.get('id');const ca=qs.get('ca');const vercelMode=qs.get('mode')==='vercel';const bar=document.getElementById('bar'),pct=document.getElementById('pct'),feed=document.getElementById('feed'),question=document.getElementById('question'),done=document.getElementById('done'),errorBox=document.getElementById('error'),caseEl=document.getElementById('case');let step=0,closed=false;
 function add(msg,kind=''){const row=document.createElement('div');row.className='row';const time=document.createElement('span');time.className='time';time.textContent=new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});const text=document.createElement('span');text.className='msg '+kind;text.textContent=msg;row.append(time,text);feed.append(row);feed.scrollTop=feed.scrollHeight}
 function progressFrom(msg){if(/INVESTIGATION STARTED/.test(msg))return 5;if(/querying/.test(msg))return Math.min(90,8+step*7);if(/decision received/.test(msg))return Math.min(92,12+step*8);if(/PROVIDER → executing/.test(msg))return Math.min(95,16+step*10);if(/OBSERVATION/.test(msg))return Math.min(96,20+step*11);if(/PLAN → enough/.test(msg))return 97;if(/VERDICT →/.test(msg))return 99;return null}
 function apply(msg){if(!msg)return;const p=progressFrom(msg);if(/ACTION →/.test(msg))step++;if(/QUESTION →/.test(msg)){question.textContent=msg.replace(/^QUESTION →\s*/, '');}if(p!=null){bar.style.width=p+'%';pct.textContent=String(p).padStart(2,'0')+'% · '+(p<25?'ESTABLISHING':p<70?'TRACING':p<96?'CORROBORATING':'FINALIZING')}if(/^AI PLANNER/.test(msg))add(msg,'accent');else if(/^VERDICT/.test(msg))add(msg,'ok');else if(/^REASONING/.test(msg))return;else add(msg)}
-if(!id){errorBox.style.display='block';errorBox.textContent='No autopsy case was supplied.';}else{caseEl.textContent='CASE · '+id.slice(0,8).toUpperCase();const es=new EventSource('/api/autopsy/'+encodeURIComponent(id)+'/events');es.onmessage=e=>{const data=JSON.parse(e.data);if(data.type==='event'){apply(data.message)}else if(data.type==='complete'){closed=true;bar.style.width='100%';pct.textContent='100% · COMPLETE';done.style.display='block';add('EVIDENCE SCENE → loading verified markers','accent');es.close();setTimeout(()=>location.href='/verdict?id='+encodeURIComponent(id),700)}else if(data.type==='error'){closed=true;errorBox.style.display='block';errorBox.textContent=data.message;es.close()}};es.onerror=()=>{if(!closed){add('CONNECTION → waiting for investigation stream…');}};fetch('/api/autopsy/'+encodeURIComponent(id)).then(r=>r.json()).then(data=>{if(data.ca)caseEl.textContent='CASE · '+data.ca.slice(0,14)+'…';if(data.status==='complete'){location.href='/verdict?id='+encodeURIComponent(id)}else if(data.status==='error'){errorBox.style.display='block';errorBox.textContent=data.error||'Autopsy failed.'}}).catch(()=>{});}
-</script>
+function showError(message){closed=true;errorBox.style.display='block';errorBox.textContent=message||'Autopsy failed.'}
+function finish(result,jobId){closed=true;bar.style.width='100%';pct.textContent='100% · COMPLETE';done.style.display='block';add('EVIDENCE SCENE → loading verified markers','accent');try{sessionStorage.setItem('onchainAutopsy.vercelResult.'+jobId,JSON.stringify(result));}catch{};setTimeout(()=>location.href='/verdict?id='+encodeURIComponent(jobId),700)}
+async function runVercel(){
+  const jobId=id||('vercel-'+Date.now()+'-'+Math.random().toString(36).slice(2));
+  caseEl.textContent='CASE · '+String(ca||'').slice(0,14).toUpperCase()+'…';
+  try{
+    const response=await fetch('/api/autopsy',{method:'POST',headers:{'Content-Type':'application/json','Accept':'text/event-stream'},body:JSON.stringify({ca})});
+    if(!response.ok) throw new Error((await response.text())||'Unable to start autopsy.');
+    if(!response.body) throw new Error('Investigation stream is unavailable.');
+    const reader=response.body.getReader();const decoder=new TextDecoder();let buffer='';
+    while(true){
+      const {value,done:streamDone}=await reader.read();
+      if(streamDone) break;
+      buffer+=decoder.decode(value,{stream:true});
+      const chunks=buffer.split('\n\n');buffer=chunks.pop()||'';
+      for(const chunk of chunks){
+        const line=chunk.split('\n').find(x=>x.startsWith('data: '));if(!line)continue;
+        const data=JSON.parse(line.slice(6));
+        if(data.type==='event') apply(data.message);
+        else if(data.type==='complete'){finish(data.result,jobId);return;}
+        else if(data.type==='error'){showError(data.message);return;}
+      }
+    }
+    if(!closed) showError('Investigation stream ended before the case completed.');
+  }catch(error){if(!closed)showError(error.message||'Unable to connect to the investigation engine.');}
+}
+if(vercelMode && ca){runVercel();}
+else if(!id){showError('No autopsy case was supplied.');}
+else{
+  caseEl.textContent='CASE · '+id.slice(0,8).toUpperCase();
+  const es=new EventSource('/api/autopsy/'+encodeURIComponent(id)+'/events');
+  es.onmessage=e=>{const data=JSON.parse(e.data);if(data.type==='event'){apply(data.message)}else if(data.type==='complete'){finish(data.result,id);es.close()}else if(data.type==='error'){showError(data.message);es.close()}};
+  es.onerror=()=>{if(!closed)add('CONNECTION → waiting for investigation stream…');};
+  fetch('/api/autopsy/'+encodeURIComponent(id)).then(r=>r.json()).then(data=>{if(data.ca)caseEl.textContent='CASE · '+data.ca.slice(0,14)+'…';if(data.status==='complete'){finish(data.result,id)}else if(data.status==='error'){showError(data.error)}}).catch(()=>{});
+}</script>
 </body></html>

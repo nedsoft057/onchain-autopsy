@@ -895,15 +895,30 @@
     if (!jobId) return;
     try {
       const res = await fetch('/api/autopsy/' + encodeURIComponent(jobId));
-      const data = await res.json();
-      if (data.status !== 'complete') {
-        location.href = '/trace?id=' + encodeURIComponent(jobId);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status !== 'complete') {
+          location.href = '/trace?id=' + encodeURIComponent(jobId);
+          return;
+        }
+        const result = data.result || {};
+        autopsyResult = result;
+        window.setAutopsyMarkers(result.scene?.markers || []);
         return;
       }
-      const result = data.result || {};
-      autopsyResult = result;
-      window.setAutopsyMarkers(result.scene?.markers || []);
+      throw new Error('API result unavailable');
     } catch (error) {
+      // Vercel's streaming adapter stores the completed result in this browser
+      // session because the deployment does not use the local in-memory job Map.
+      try {
+        const raw = sessionStorage.getItem('onchainAutopsy.vercelResult.' + jobId);
+        if (raw) {
+          const result = JSON.parse(raw);
+          autopsyResult = result;
+          window.setAutopsyMarkers(result.scene?.markers || []);
+          return;
+        }
+      } catch {}
       showToast('Unable to load this case');
     }
   }

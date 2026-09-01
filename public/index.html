@@ -1296,13 +1296,18 @@
     btn.disabled = true;
     btn.textContent = 'STARTING AUTOPSY…';
     try{
+      saveRecentToken(ca);
+      // Vercel uses a streaming function; the trace page owns that stream.
+      if (location.hostname.endsWith('.vercel.app') || location.hostname === 'vercel.app') {
+        window.location.href = `/trace?ca=${encodeURIComponent(ca)}&mode=vercel`;
+        return;
+      }
       const response = await fetch('/api/autopsy', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({ca})
       });
       const data = await response.json();
       if(!response.ok) throw new Error(data.error || 'Unable to start autopsy.');
-      saveRecentToken(ca);
       window.location.href = `/trace?id=${encodeURIComponent(data.jobId)}`;
     }catch(error){
       btn.disabled = false;
