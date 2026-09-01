@@ -10,6 +10,14 @@
     {
       "source": "/api/autopsy",
       "destination": "/api/autopsy.js"
+    },
+    {
+      "source": "/trace",
+      "destination": "/trace.html"
+    },
+    {
+      "source": "/verdict",
+      "destination": "/verdict.html"
     }
   ]
 }
