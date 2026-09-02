@@ -256,6 +256,7 @@
   .glass-nav button.active {
     background: rgba(255,255,255,.13);
     color: #fff;
+    transform: scale(1.14);
   }
 
   .glass-nav svg {
@@ -637,7 +638,7 @@
     const p = markerPixels(m);
     const s = getWorldSize();
 
-    zoom = 1.55;
+    zoom = 2.5;
     x = scene.clientWidth / 2 - p.x * zoom;
     y = -(p.y - s.height / 2) * zoom;
 
